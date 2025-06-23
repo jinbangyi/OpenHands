@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 import socketio
 
@@ -48,7 +49,7 @@ class ConversationManager(ABC):
     conversation_store: ConversationStore
 
     @abstractmethod
-    async def __aenter__(self):
+    async def __aenter__(self) -> Any:
         """Initialize the conversation manager."""
 
     @abstractmethod

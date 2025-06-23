@@ -27,7 +27,7 @@ async def get_remote_runtime_config(
     Currently, this is the session ID and runtime ID (if available).
     """
     runtime = conversation.runtime
-    runtime_id = runtime.runtime_id if hasattr(runtime, 'runtime_id') else None
+    runtime_id = getattr(runtime, "runtime_id") if hasattr(runtime, 'runtime_id') else None
     session_id = runtime.sid if hasattr(runtime, 'sid') else None
     return JSONResponse(
         content={
@@ -157,7 +157,7 @@ async def search_events(
 async def add_event(
     request: Request, conversation: ServerConversation = Depends(get_conversation)
 ):
-    data = request.json()
+    data = await request.json()
     await conversation_manager.send_to_event_stream(conversation.sid, data)
     return JSONResponse({'success': True})
 

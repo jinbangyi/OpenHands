@@ -46,14 +46,14 @@ sio = socketio.AsyncServer(
     async_mode='asgi', cors_allowed_origins='*', client_manager=client_manager
 )
 
-MonitoringListenerImpl = get_impl(
+MonitoringListenerImpl: MonitoringListener = get_impl(
     MonitoringListener,
     server_config.monitoring_listener_class,
 )
 
 monitoring_listener = MonitoringListenerImpl.get_instance(config)
 
-ConversationManagerImpl = get_impl(
+ConversationManagerImpl: ConversationManager = get_impl(
     ConversationManager,
     server_config.conversation_manager_class,
 )
@@ -62,7 +62,7 @@ conversation_manager = ConversationManagerImpl.get_instance(
     sio, config, file_store, server_config, monitoring_listener
 )
 
-SettingsStoreImpl = get_impl(SettingsStore, server_config.settings_store_class)
+SettingsStoreImpl: SettingsStore = get_impl(SettingsStore, server_config.settings_store_class)
 
 SecretsStoreImpl = get_impl(SecretsStore, server_config.secret_store_class)
 

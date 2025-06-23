@@ -120,6 +120,7 @@ class BrowserEnv:
             try:
                 if self.browser_side.poll(timeout=0.01):
                     unique_request_id, action_data = self.browser_side.recv()
+                    logger.debug(f'BrowserEnv Received action: {action_data}')
 
                     # shutdown the browser environment
                     if unique_request_id == 'SHUTDOWN':

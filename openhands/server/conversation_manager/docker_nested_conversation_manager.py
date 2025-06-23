@@ -12,6 +12,7 @@ import docker
 import httpx
 import socketio
 from docker.models.containers import Container
+from docker import errors
 from fastapi import status
 
 from openhands.controller.agent import Agent
@@ -283,7 +284,7 @@ class DockerNestedConversationManager(ConversationManager):
         # First try to graceful stop server.
         try:
             container = self.docker_client.containers.get(f'openhands-runtime-{sid}')
-        except docker.errors.NotFound:
+        except errors.NotFound:
             return
         try:
             nested_url = self.get_nested_url_for_container(container)
@@ -532,7 +533,7 @@ class DockerNestedConversationManager(ConversationManager):
                     await call_sync_from_async(container.start)
                 return True
             return False
-        except docker.errors.NotFound:
+        except errors.NotFound:
             return False
 
 

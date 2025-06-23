@@ -12,6 +12,13 @@ ENV POETRY_VIRTUALENVS_PATH=/openhands/poetry \
 
 {% macro setup_base_system() %}
 
+{%- if 'ubuntu' in base_image and base_image.endswith(':22.04') -%}
+# support python12 for Ubuntu ubuntu:22.04
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common && \
+    DEBIAN_FRONTEND=noninteractive add-apt-repository ppa:deadsnakes/ppa
+{% endif -%}
+
 # Install base system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \

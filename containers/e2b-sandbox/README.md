@@ -11,5 +11,6 @@
 
 1. Build the sandbox
   ```sh
+  rm -f e2b.toml && \
   e2b template build --dockerfile ./Dockerfile --name "openhands"
   ```

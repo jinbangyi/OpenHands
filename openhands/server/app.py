@@ -8,9 +8,7 @@ from fastapi.routing import Mount
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')
 
-from fastapi import (
-    FastAPI,
-)
+from fastapi import FastAPI
 
 import openhands.agenthub  # noqa F401 (we import this to get the agents registered)
 from openhands import __version__
@@ -24,6 +22,8 @@ from openhands.server.routes.manage_conversations import (
 )
 from openhands.server.routes.mcp import mcp_server
 from openhands.server.routes.public import app as public_api_router
+from openhands.server.routes.runtime_sessions import app as runtime_sessions_router
+from openhands.server.routes.browser import app as browser_router
 from openhands.server.routes.secrets import app as secrets_router
 from openhands.server.routes.security import app as security_api_router
 from openhands.server.routes.settings import app as settings_router
@@ -66,6 +66,8 @@ app.include_router(security_api_router)
 app.include_router(feedback_api_router)
 app.include_router(conversation_api_router)
 app.include_router(manage_conversation_api_router)
+app.include_router(runtime_sessions_router)
+app.include_router(browser_router)
 app.include_router(settings_router)
 app.include_router(secrets_router)
 app.include_router(git_api_router)

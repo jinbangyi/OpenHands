@@ -211,9 +211,13 @@ build-frontend:
 	@cd frontend && npm run prepare && npm run build
 
 # Start backend
-start-backend:
+start-backend-reload:
 	@echo "$(YELLOW)Starting backend...$(RESET)"
 	@poetry run uvicorn openhands.server.listen:app --host $(BACKEND_HOST) --port $(BACKEND_PORT) --reload --reload-exclude "./workspace"
+
+start-backend:
+	@echo "$(YELLOW)Starting backend...$(RESET)"
+	@poetry run uvicorn openhands.server.listen:app --host $(BACKEND_HOST) --port $(BACKEND_PORT)
 
 # Start frontend
 start-frontend:

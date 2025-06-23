@@ -117,6 +117,12 @@ async def create_pr(
     )
 
     try:
+        if conversation_id is None:
+            logger.warning(
+                'No conversation ID found in headers, skipping appending convo link'
+            )
+            raise ValueError('No conversation ID found in headers')
+
         body = await get_convo_link(github_service, conversation_id, body or '')
     except Exception as e:
         logger.warning(f'Failed to append convo link: {e}')
@@ -184,6 +190,12 @@ async def create_mr(
     )
 
     try:
+        if conversation_id is None:
+            logger.warning(
+                'No conversation ID found in headers, skipping appending convo link'
+            )
+            raise ValueError('No conversation ID found in headers')
+
         description = await get_convo_link(
             gitlab_service, conversation_id, description or ''
         )
@@ -251,6 +263,12 @@ async def create_bitbucket_pr(
     )
 
     try:
+        if conversation_id is None:
+            logger.warning(
+                'No conversation ID found in headers, skipping appending convo link'
+            )
+            raise ValueError('No conversation ID found in headers')
+
         description = await get_convo_link(
             bitbucket_service, conversation_id, description or ''
         )

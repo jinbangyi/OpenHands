@@ -17,8 +17,9 @@ from openhands.runtime.impl.action_execution.action_execution_client import (
     ActionExecutionClient,
 )
 from openhands.runtime.impl.e2b.filestore import E2BFileStore
-from openhands.runtime.impl.e2b.sandbox import E2BSandbox
+from openhands.runtime.impl.e2b.sandbox import E2BBox
 from openhands.runtime.plugins import PluginRequirement
+from openhands.runtime.runtime_status import RuntimeStatus
 from openhands.runtime.utils.files import insert_lines, read_lines
 
 
@@ -35,7 +36,7 @@ class E2BRuntime(ActionExecutionClient):
         headless_mode: bool = True,
         user_id: str | None = None,
         git_provider_tokens: PROVIDER_TOKEN_TYPE | None = None,
-        sandbox: E2BSandbox | None = None,
+        sandbox: E2BBox | None = None,
     ):
         super().__init__(
             config,
@@ -50,8 +51,11 @@ class E2BRuntime(ActionExecutionClient):
             git_provider_tokens,
         )
         if sandbox is None:
-            self.sandbox = E2BSandbox()
-        if not isinstance(self.sandbox, E2BSandbox):
+            if config.e2b_api_key is None:
+                raise ValueError('E2BRuntime requires an E2B API key')
+
+            self.sandbox = E2BBox(config.sandbox, str(config.e2b_api_key), config.e2b_template)
+        if not isinstance(self.sandbox, E2BBox):
             raise ValueError('E2BRuntime requires an E2BSandbox')
         self.file_store = E2BFileStore(self.sandbox.filesystem)
 
@@ -76,3 +80,58 @@ class E2BRuntime(ActionExecutionClient):
         else:
             # FIXME: we should create a new file here
             return ErrorObservation(f'File not found: {action.path}')
+
+    @property
+    def action_execution_server_url(self) -> str:
+        return self.api_url
+
+    async def connect(self) -> None:
+        self.set_runtime_status(RuntimeStatus.STARTING_RUNTIME)
+        self.api_url = self.sandbox.url
+        print(self.api_url)
+
+        self.set_runtime_status(RuntimeStatus.READY)
+        self._runtime_initialized = True
+    #     try:
+    #         await call_sync_from_async(self._attach_to_container)
+    #     except docker.errors.NotFound as e:
+    #         if self.attach_to_existing:
+    #             self.log(
+    #                 'warning',
+    #                 f'Container {self.container_name} not found.',
+    #             )
+    #             raise AgentRuntimeDisconnectedError from e
+    #         self.maybe_build_runtime_container_image()
+    #         self.log(
+    #             'info', f'Starting runtime with image: {self.runtime_container_image}'
+    #         )
+    #         await call_sync_from_async(self.init_container)
+    #         self.log(
+    #             'info',
+    #             f'Container started: {self.container_name}. VSCode URL: {self.vscode_url}',
+    #         )
+
+    #     if DEBUG_RUNTIME and self.container:
+    #         self.log_streamer = LogStreamer(self.container, self.log)
+    #     else:
+    #         self.log_streamer = None
+
+    #     if not self.attach_to_existing:
+    #         self.log('info', f'Waiting for client to become ready at {self.api_url}...')
+    #         self.set_runtime_status(RuntimeStatus.STARTING_RUNTIME)
+
+    #     await call_sync_from_async(self.wait_until_alive)
+
+    #     if not self.attach_to_existing:
+    #         self.log('info', 'Runtime is ready.')
+
+    #     if not self.attach_to_existing:
+    #         await call_sync_from_async(self.setup_initial_env)
+
+    #     self.log(
+    #         'debug',
+    #         f'Container initialized with plugins: {[plugin.name for plugin in self.plugins]}. VSCode URL: {self.vscode_url}',
+    #     )
+    #     if not self.attach_to_existing:
+    #         self.set_runtime_status(RuntimeStatus.READY)
+    #     self._runtime_initialized = True

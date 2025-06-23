@@ -28,15 +28,21 @@ class E2BBox:
             api_key=e2b_api_key,
             template=template,
             # It's possible to stream stdout and stderr from sandbox and from each process
-            on_stderr=lambda x: logger.debug(f'E2B sandbox stderr: {x}'),
-            on_stdout=lambda x: logger.debug(f'E2B sandbox stdout: {x}'),
-            cwd=self._cwd,  # Default workdir inside sandbox
+            # on_stderr=lambda x: logger.debug(f'E2B sandbox stderr: {x}'),
+            # on_stdout=lambda x: logger.debug(f'E2B sandbox stdout: {x}'),
+            # cwd=self._cwd,  # Default workdir inside sandbox
         )
-        logger.debug(f'Started E2B sandbox with ID "{self.sandbox.id}"')
+        logger.debug(f'Started E2B sandbox with ID "{self.sandbox.sandbox_id}"')
+
+    @property
+    def url(self):
+        host = self.sandbox.get_host(3000)
+        url = f"https://{host}"
+        return url
 
     @property
     def filesystem(self):
-        return self.sandbox.filesystem
+        return self.sandbox._filesystem
 
     def _archive(self, host_src: str, recursive: bool = False):
         if recursive:

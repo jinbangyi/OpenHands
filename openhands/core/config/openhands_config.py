@@ -45,6 +45,7 @@ class OpenHandsConfig(BaseModel):
         max_iterations: Maximum number of iterations allowed.
         max_budget_per_task: Maximum budget per task, agent stops if exceeded.
         e2b_api_key: E2B API key.
+        e2b_template: E2B template to use for the sandbox.
         disable_color: Whether to disable terminal colors. For terminals that don't support color.
         debug: Whether to enable debugging mode.
         file_uploads_max_file_size_mb: Maximum file upload size in MB. `0` means unlimited.
@@ -87,6 +88,7 @@ class OpenHandsConfig(BaseModel):
     max_iterations: int = Field(default=OH_MAX_ITERATIONS)
     max_budget_per_task: float | None = Field(default=None)
     e2b_api_key: SecretStr | None = Field(default=None)
+    e2b_template: str = Field(default='openhands')
     modal_api_token_id: SecretStr | None = Field(default=None)
     modal_api_token_secret: SecretStr | None = Field(default=None)
     disable_color: bool = Field(default=False)

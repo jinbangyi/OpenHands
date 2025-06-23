@@ -314,6 +314,11 @@ async def get_prompt(
         # placeholder for error handling
         raise ValueError('Settings not found')
 
+    if not settings.llm_model:
+        raise MissingSettingsError(
+            'LLM model is not configured in user settings.'
+        )
+
     llm_config = LLMConfig(
         model=settings.llm_model,
         api_key=settings.llm_api_key,
