@@ -89,7 +89,14 @@ class E2BRuntime(ActionExecutionClient):
         self.file_store = E2BFileStore(self.sandbox.filesystem)
 
     def read(self, action: FileReadAction) -> Observation:
-        content = self.file_store.read(action.path)
+        try:
+            content = self.file_store.read(action.path)
+        except FileNotFoundError:
+            return ErrorObservation(f'File not found: {action.path}')
+        except Exception as e:
+            logger.error(f'Error reading file {action.path}: {e}')
+            return ErrorObservation(f'Error reading file: {e}')
+
         lines = read_lines(content.split('\n'), action.start, action.end)
         code_view = ''.join(lines)
         return FileReadObservation(code_view, path=action.path)
@@ -156,8 +163,15 @@ class E2BRuntime(ActionExecutionClient):
         if not token:
             return None
 
-        vscode_url = f'http://localhost:{self.vscode_port}/?tkn={token}&folder={self.config.workspace_mount_path_in_sandbox}'
-        return vscode_url
+        if self.sandbox.is_running():
+            base_url = self.sandbox.get_url(self.vscode_port)
+            vscode_url = f'{base_url}/?tkn={token}&folder={self.config.workspace_mount_path_in_sandbox}'
+            return vscode_url
+
+        raise RuntimeError(
+            'Action execution server is not running. Please call connect() before accessing the URL.'
+        )
+
 
     def _is_execution_server_running(self) -> bool:
         """
@@ -171,7 +185,7 @@ class E2BRuntime(ActionExecutionClient):
             self.check_if_alive()
             return True
         except Exception as e:
-            logger.error(f'Error checking if action execution server is running')
+            logger.warning(f'Error checking if action execution server is running')
             return False
 
     def init_container(self):
@@ -192,6 +206,7 @@ class E2BRuntime(ActionExecutionClient):
                 cwd='/openhands/code/',
                 background=True,
                 user='root',
+                # timeout=0,
             )
             logger.info(
                 f'Started action execution server at {self.action_execution_server_url}'
@@ -202,7 +217,7 @@ class E2BRuntime(ActionExecutionClient):
     @tenacity.retry(
         stop=tenacity.stop_after_delay(120) | stop_if_should_exit(),
         retry=tenacity.retry_if_exception(_is_retryablewait_until_alive_error),
-        reraise=True,
+        reraise=False,
         wait=tenacity.wait_fixed(5),
     )
     def _wait_until_alive(self) -> None:

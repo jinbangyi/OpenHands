@@ -1,15 +1,17 @@
 import copy
+import time
 import os
 import tarfile
-from glob import glob
 import threading
-from typing import Optional, Dict
+from glob import glob
+from typing import Dict, Optional
 
-from e2b import CommandHandle, Sandbox as E2BSandbox
-from e2b.sandbox_sync.sandbox_api import SandboxApi
-from e2b.sandbox.sandbox_api import SandboxQuery
-from e2b.exceptions import TimeoutException
+from e2b import CommandHandle
+from e2b import Sandbox as E2BSandbox
 from e2b.connection_config import Username
+from e2b.exceptions import TimeoutException
+from e2b.sandbox.sandbox_api import SandboxQuery
+from e2b.sandbox_sync.sandbox_api import SandboxApi
 
 from openhands.core.config import SandboxConfig
 from openhands.core.logger import openhands_logger as logger
@@ -25,13 +27,14 @@ class E2BBox:
 
     TODO e2b has a new feature to pause and resume sandboxes, we can use it to easily manage resources
     """
+
     closed = False
     _cwd: str = '/home/user'
     _mount_dir: str = '/home/user/bucket'
     _env: dict[str, str] = {}
     is_initial_session: bool = True
     # < 1h
-    timeout: int = 1200 # 20m
+    timeout: int = 1200  # 20m
 
     def __init__(
         self,
@@ -84,11 +87,15 @@ class E2BBox:
             'sid': self.sid,
         }
 
-        sandboxes = SandboxApi.list(api_key=self.e2b_api_key, query=SandboxQuery(metadata=metadata))
+        sandboxes = SandboxApi.list(
+            api_key=self.e2b_api_key, query=SandboxQuery(metadata=metadata)
+        )
         if len(sandboxes) > 0:
             sandbox = sandboxes[0]
             logger.debug(f'Found existing sandbox with ID "{sandbox.sandbox_id}"')
-            return E2BSandbox.connect(sandbox_id=sandbox.sandbox_id, api_key=self.e2b_api_key)
+            return E2BSandbox.connect(
+                sandbox_id=sandbox.sandbox_id, api_key=self.e2b_api_key
+            )
 
         # If no sandbox found, create a new one
         logger.debug('No existing sandbox found, creating a new one')
@@ -115,9 +122,7 @@ class E2BBox:
                     'root',
                 )
 
-                sandbox.commands.run(
-                    'sudo chmod 600 /root/.passwd-s3fs'
-                )
+                sandbox.commands.run('sudo chmod 600 /root/.passwd-s3fs')
 
                 # Mount the S3 bucket
                 sandbox.commands.run(
@@ -127,7 +132,9 @@ class E2BBox:
                     '-o url=https://s3.amazonaws.com -o use_path_request_style '
                     '-o allow_other -o umask=0000'
                 )
-                logger.debug(f'S3 bucket "{self.bucket_name}" mounted to "{self._mount_dir}"')
+                logger.debug(
+                    f'S3 bucket "{self.bucket_name}" mounted to "{self._mount_dir}"'
+                )
 
     def start(self):
         """Start the sandbox if it is not already running."""
@@ -145,9 +152,9 @@ class E2BBox:
 
     def _archive(self, host_src: str, recursive: bool = False):
         if recursive:
-            assert os.path.isdir(host_src), (
-                'Source must be a directory when recursive is True'
-            )
+            assert os.path.isdir(
+                host_src
+            ), 'Source must be a directory when recursive is True'
             files = glob(host_src + '/**/*', recursive=True)
             srcname = os.path.basename(host_src)
             tar_filename = os.path.join(os.path.dirname(host_src), srcname + '.tar')
@@ -157,9 +164,9 @@ class E2BBox:
                         file, arcname=os.path.relpath(file, os.path.dirname(host_src))
                     )
         else:
-            assert os.path.isfile(host_src), (
-                'Source must be a file when recursive is False'
-            )
+            assert os.path.isfile(
+                host_src
+            ), 'Source must be a file when recursive is False'
             srcname = os.path.basename(host_src)
             tar_filename = os.path.join(os.path.dirname(host_src), srcname + '.tar')
             with tarfile.open(tar_filename, mode='w') as tar:
@@ -167,14 +174,14 @@ class E2BBox:
         return tar_filename
 
     def execute(
-            self,
-            cmd: str,
-            cwd: str | None = None,
-            envs: Dict[str, str] | None = None,
-            timeout: float | None = 60,
-            background: bool = False,
-            user: Username = 'user',
-        ):
+        self,
+        cmd: str,
+        cwd: str | None = None,
+        envs: Dict[str, str] | None = None,
+        timeout: float | None = 120,
+        background: bool = False,
+        user: Username = 'user',
+    ):
         """Execute a command in the sandbox."""
         if not self.is_running():
             raise TimeoutException('Sandbox is not running')
@@ -195,7 +202,9 @@ class E2BBox:
             logger.debug(f'Command response: {resp.stdout}')
             logger.debug(f'Command exit code: {resp.exit_code}')
         else:
-            threading.Thread(target=self._watch_events, args=(resp,), daemon=True).start()
+            threading.Thread(
+                target=self._watch_events, args=(resp,), daemon=True
+            ).start()
 
             logger.debug(f'Command handle created with PID: {resp.pid}')
 
@@ -204,7 +213,18 @@ class E2BBox:
         Watch events from a command handle.
         This is useful for long-running commands to get real-time output.
         """
+
+        start_time = time.time()
+        timeout_seconds = 300  # 5 minute timeout
+
         for event in command_handle._handle_events():
+            # Check if timeout has been reached
+            if time.time() - start_time > timeout_seconds:
+                logger.debug(
+                    f'Event watching timed out after {timeout_seconds} seconds'
+                )
+                break
+
             if isinstance(event, tuple):
                 stdout, stderr, pty_output = event
                 if stdout:

@@ -130,7 +130,11 @@ class ActionExecutionClient(Runtime):
             f'{self.action_execution_server_url}/alive',
             timeout=5,
         )
-        assert response.is_closed
+
+        if not response.is_closed:
+            raise httpx.RemoteProtocolError(
+                f'Action execution server is not alive: {response.text}'
+            )
 
     def list_files(self, path: str | None = None) -> list[str]:
         """List files in the sandbox.
