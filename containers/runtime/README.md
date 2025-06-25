@@ -7,6 +7,9 @@ The following command will generate a `Dockerfile` file for `nikolaik/python-nod
 
 ```bash
 poetry run python3 openhands/runtime/utils/runtime_build.py \
-    --base_image ubuntu:22.04 \
-    --build_folder containers/runtime
+    --base_image jinbangyi/openhands-runtime:0.0.3 \
+    --build_folder containers/runtime \
+    --skip_setup_base_image \
+    --skip_app_start_prepare \
+    --skip_setup_vscode_server
 ```

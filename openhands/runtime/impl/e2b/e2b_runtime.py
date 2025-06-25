@@ -1,6 +1,10 @@
 from typing import Callable
 
+import tenacity
+
+from containers.runtime.code.openhands.utils.async_utils import call_sync_from_async
 from openhands.core.config import OpenHandsConfig
+from openhands.core.logger import DEBUG
 from openhands.events.action import (
     FileReadAction,
     FileWriteAction,
@@ -16,14 +20,22 @@ from openhands.integrations.provider import PROVIDER_TOKEN_TYPE
 from openhands.runtime.impl.action_execution.action_execution_client import (
     ActionExecutionClient,
 )
+from openhands.runtime.impl.docker.docker_runtime import _is_retryablewait_until_alive_error
 from openhands.runtime.impl.e2b.filestore import E2BFileStore
 from openhands.runtime.impl.e2b.sandbox import E2BBox
 from openhands.runtime.plugins import PluginRequirement
 from openhands.runtime.runtime_status import RuntimeStatus
+from openhands.runtime.utils.command import DEFAULT_MAIN_MODULE, get_action_execution_server_startup_command
 from openhands.runtime.utils.files import insert_lines, read_lines
-
+from openhands.utils.tenacity_stop import stop_if_should_exit
+from openhands.core.logger import openhands_logger as logger
 
 class E2BRuntime(ActionExecutionClient):
+    # TODO find available port dynamically from e2b sandbox
+    server_port = 31000
+    vscode_port = 32000
+    app_ports = [33000, 33001]
+
     def __init__(
         self,
         config: OpenHandsConfig,
@@ -37,6 +49,7 @@ class E2BRuntime(ActionExecutionClient):
         user_id: str | None = None,
         git_provider_tokens: PROVIDER_TOKEN_TYPE | None = None,
         sandbox: E2BBox | None = None,
+        main_module: str = DEFAULT_MAIN_MODULE,
     ):
         super().__init__(
             config,
@@ -50,11 +63,27 @@ class E2BRuntime(ActionExecutionClient):
             user_id,
             git_provider_tokens,
         )
+        self.main_module = main_module
         if sandbox is None:
             if config.e2b_api_key is None:
                 raise ValueError('E2BRuntime requires an E2B API key')
+            if config.s3_bucket_name is None:
+                raise ValueError('E2BRuntime requires an S3 bucket name')
+            if config.s3_access_key is None or config.s3_secret_key is None:
+                raise ValueError('E2BRuntime requires S3 access and secret keys')
 
-            self.sandbox = E2BBox(config.sandbox, str(config.e2b_api_key), config.e2b_template)
+            # print(f'Creating E2B sandbox with ID "{config.s3_secret_key}"')
+            # print(f'Creating E2B sandbox with ID "{config.s3_secret_key.get_secret_value()}"')
+
+            self.sandbox = E2BBox(
+                sid,
+                config.sandbox,
+                config.e2b_api_key.get_secret_value(),
+                config.s3_access_key,
+                str(config.s3_secret_key),
+                config.s3_bucket_name,
+                config.e2b_template
+            )
         if not isinstance(self.sandbox, E2BBox):
             raise ValueError('E2BRuntime requires an E2BSandbox')
         self.file_store = E2BFileStore(self.sandbox.filesystem)
@@ -83,55 +112,118 @@ class E2BRuntime(ActionExecutionClient):
 
     @property
     def action_execution_server_url(self) -> str:
-        return self.api_url
+        if self.sandbox.is_running():
+            return self.sandbox.get_url(self.server_port)
+
+        raise RuntimeError(
+            'Action execution server is not running. Please call connect() before accessing the URL.'
+        )
+
+    def _get_action_execution_server_startup_command(self) -> list[str]:
+        return get_action_execution_server_startup_command(
+            server_port=self.server_port,
+            plugins=self.plugins,
+            app_config=self.config,
+            main_module=self.main_module,
+            override_user_id=1001,
+        )
+
+    def _get_action_execution_server_startup_environment(self) -> dict[str, str]:
+        """
+        Returns the environment variables to be used when starting the action execution server.
+        """
+        environment = dict(**self.initial_env_vars)
+        environment.update(
+            {
+                'port': str(self.server_port),
+                'PYTHONUNBUFFERED': '1',
+                # Passing in the ports means nested runtimes do not come up with their own ports!
+                'VSCODE_PORT': str(self.vscode_port),
+                'APP_PORT_1': str(self.app_ports[0]),
+                'APP_PORT_2': str(self.app_ports[1]),
+                'PIP_BREAK_SYSTEM_PACKAGES': '1',
+            }
+        )
+        if self.config.debug or DEBUG:
+            environment['DEBUG'] = 'true'
+        # also update with runtime_startup_env_vars
+        environment.update(self.config.sandbox.runtime_startup_env_vars)
+        return environment
+
+    @property
+    def vscode_url(self) -> str | None:
+        token = super().get_vscode_token()
+        if not token:
+            return None
+
+        vscode_url = f'http://localhost:{self.vscode_port}/?tkn={token}&folder={self.config.workspace_mount_path_in_sandbox}'
+        return vscode_url
+
+    def _is_execution_server_running(self) -> bool:
+        """
+        Check if the action execution server is running.
+        This is done by checking if the sandbox is running and if the server port is accessible.
+        """
+        if not self.sandbox.is_running():
+            return False
+
+        try:
+            self.check_if_alive()
+            return True
+        except Exception as e:
+            logger.error(f'Error checking if action execution server is running')
+            return False
+
+    def init_container(self):
+        """
+        If the sandbox is already running, attach to it and set the API URL.
+        If the sandbox is not running, start it and set the API URL.
+        """
+        if not self.sandbox.is_running():
+            self.sandbox.start()
+
+        if not self._is_execution_server_running():
+            environment = self._get_action_execution_server_startup_environment()
+            command = self._get_action_execution_server_startup_command()
+
+            self.sandbox.execute(
+                cmd=' '.join(command),
+                envs=environment,
+                cwd='/openhands/code/',
+                background=True,
+                user='root',
+            )
+            logger.info(
+                f'Started action execution server at {self.action_execution_server_url}'
+            )
+
+        self.set_runtime_status(RuntimeStatus.RUNTIME_STARTED)
+
+    @tenacity.retry(
+        stop=tenacity.stop_after_delay(120) | stop_if_should_exit(),
+        retry=tenacity.retry_if_exception(_is_retryablewait_until_alive_error),
+        reraise=True,
+        wait=tenacity.wait_fixed(5),
+    )
+    def _wait_until_alive(self) -> None:
+        self.check_if_alive()
 
     async def connect(self) -> None:
+        if self._is_execution_server_running():
+            logger.info(
+                f'Action execution server is already running at {self.action_execution_server_url}'
+            )
+            self.set_runtime_status(RuntimeStatus.READY)
+            self._runtime_initialized = True
+            return
+
         self.set_runtime_status(RuntimeStatus.STARTING_RUNTIME)
-        self.api_url = self.sandbox.url
-        print(self.api_url)
+
+        # TODO if sandbox exists but not running, start it
+        self.init_container()
+
+        logger.info(f'Waiting for action execution server to start at {self.action_execution_server_url}')
+        await call_sync_from_async(self._wait_until_alive)
 
         self.set_runtime_status(RuntimeStatus.READY)
         self._runtime_initialized = True
-    #     try:
-    #         await call_sync_from_async(self._attach_to_container)
-    #     except docker.errors.NotFound as e:
-    #         if self.attach_to_existing:
-    #             self.log(
-    #                 'warning',
-    #                 f'Container {self.container_name} not found.',
-    #             )
-    #             raise AgentRuntimeDisconnectedError from e
-    #         self.maybe_build_runtime_container_image()
-    #         self.log(
-    #             'info', f'Starting runtime with image: {self.runtime_container_image}'
-    #         )
-    #         await call_sync_from_async(self.init_container)
-    #         self.log(
-    #             'info',
-    #             f'Container started: {self.container_name}. VSCode URL: {self.vscode_url}',
-    #         )
-
-    #     if DEBUG_RUNTIME and self.container:
-    #         self.log_streamer = LogStreamer(self.container, self.log)
-    #     else:
-    #         self.log_streamer = None
-
-    #     if not self.attach_to_existing:
-    #         self.log('info', f'Waiting for client to become ready at {self.api_url}...')
-    #         self.set_runtime_status(RuntimeStatus.STARTING_RUNTIME)
-
-    #     await call_sync_from_async(self.wait_until_alive)
-
-    #     if not self.attach_to_existing:
-    #         self.log('info', 'Runtime is ready.')
-
-    #     if not self.attach_to_existing:
-    #         await call_sync_from_async(self.setup_initial_env)
-
-    #     self.log(
-    #         'debug',
-    #         f'Container initialized with plugins: {[plugin.name for plugin in self.plugins]}. VSCode URL: {self.vscode_url}',
-    #     )
-    #     if not self.attach_to_existing:
-    #         self.set_runtime_status(RuntimeStatus.READY)
-    #     self._runtime_initialized = True

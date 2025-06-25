@@ -32,6 +32,9 @@ def _generate_dockerfile(
     base_image: str,
     build_from: BuildFromImageType = BuildFromImageType.SCRATCH,
     extra_deps: str | None = None,
+    setup_base_image: bool = True,
+    app_start_prepare: bool = True,
+    setup_vscode_server: bool = True,
 ) -> str:
     """Generate the Dockerfile content for the runtime image based on the base image.
 
@@ -51,6 +54,9 @@ def _generate_dockerfile(
     template = env.get_template('Dockerfile.j2')
 
     dockerfile_content = template.render(
+        setup_system=setup_base_image,
+        app_start_prepare=app_start_prepare,
+        setup_vscode=setup_vscode_server,
         base_image=base_image,
         build_from_scratch=build_from == BuildFromImageType.SCRATCH,
         build_from_versioned=build_from == BuildFromImageType.VERSIONED,
@@ -111,6 +117,9 @@ def build_runtime_image(
     dry_run: bool = False,
     force_rebuild: bool = False,
     extra_build_args: list[str] | None = None,
+    setup_base_image: bool = True,
+    app_start_prepare: bool = True,
+    setup_vscode_server: bool = True,
 ) -> str:
     """Prepares the final docker build folder.
 
@@ -142,6 +151,9 @@ def build_runtime_image(
                 force_rebuild=force_rebuild,
                 platform=platform,
                 extra_build_args=extra_build_args,
+                setup_base_image=setup_base_image,
+                app_start_prepare=app_start_prepare,
+                setup_vscode_server=setup_vscode_server,
             )
             return result
 
@@ -154,6 +166,9 @@ def build_runtime_image(
         force_rebuild=force_rebuild,
         platform=platform,
         extra_build_args=extra_build_args,
+        setup_base_image=setup_base_image,
+        app_start_prepare=app_start_prepare,
+        setup_vscode_server=setup_vscode_server,
     )
     return result
 
@@ -167,6 +182,9 @@ def build_runtime_image_in_folder(
     force_rebuild: bool,
     platform: str | None = None,
     extra_build_args: list[str] | None = None,
+    setup_base_image: bool = True,
+    app_start_prepare: bool = True,
+    setup_vscode_server: bool = True,
 ) -> str:
     runtime_image_repo, _ = get_runtime_image_repo_and_tag(base_image)
     lock_tag = f'oh_v{oh_version}_{get_hash_for_lock_files(base_image)}'
@@ -188,6 +206,9 @@ def build_runtime_image_in_folder(
             base_image,
             build_from=BuildFromImageType.SCRATCH,
             extra_deps=extra_deps,
+            setup_base_image=setup_base_image,
+            app_start_prepare=app_start_prepare,
+            setup_vscode_server=setup_vscode_server,
         )
         if not dry_run:
             _build_sandbox_image(
@@ -226,7 +247,15 @@ def build_runtime_image_in_folder(
     else:
         logger.debug(f'Build [{hash_image_name}] from scratch')
 
-    prep_build_folder(build_folder, base_image, build_from, extra_deps)
+    prep_build_folder(
+        build_folder,
+        base_image,
+        build_from,
+        extra_deps,
+        setup_base_image=setup_base_image,
+        app_start_prepare=app_start_prepare,
+        setup_vscode_server=setup_vscode_server,
+    )
     if not dry_run:
         _build_sandbox_image(
             build_folder,
@@ -251,6 +280,9 @@ def prep_build_folder(
     base_image: str,
     build_from: BuildFromImageType,
     extra_deps: str | None,
+    setup_base_image: bool = True,
+    app_start_prepare: bool = True,
+    setup_vscode_server: bool = True,
 ) -> None:
     # Copy the source code to directory. It will end up in build_folder/code
     # If package is not found, build from source code
@@ -282,6 +314,9 @@ def prep_build_folder(
         base_image,
         build_from=build_from,
         extra_deps=extra_deps,
+        setup_base_image=setup_base_image,
+        app_start_prepare=app_start_prepare,
+        setup_vscode_server=setup_vscode_server,
     )
     dockerfile_path = Path(build_folder, 'Dockerfile')
     with open(str(dockerfile_path), 'w') as f:
@@ -378,6 +413,9 @@ if __name__ == '__main__':
     parser.add_argument('--build_folder', type=str, default=None)
     parser.add_argument('--force_rebuild', action='store_true', default=False)
     parser.add_argument('--platform', type=str, default=None)
+    parser.add_argument('--skip_setup_base_image', default=False, action='store_true',)
+    parser.add_argument('--skip_app_start_prepare', default=False, action='store_true',)
+    parser.add_argument('--skip_setup_vscode_server', default=False, action='store_true',)
     args = parser.parse_args()
 
     if args.build_folder is not None:
@@ -408,6 +446,9 @@ if __name__ == '__main__':
                 build_folder=temp_dir,
                 dry_run=True,
                 force_rebuild=args.force_rebuild,
+                setup_base_image=not args.skip_setup_base_image,
+                app_start_prepare=not args.skip_app_start_prepare,
+                setup_vscode_server=not args.skip_setup_vscode_server,
                 platform=args.platform,
             )
 

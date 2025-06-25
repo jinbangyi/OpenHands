@@ -13,6 +13,9 @@
 # API key for E2B
 #e2b_api_key = ""
 #e2b_template = ""
+#s3_access_key = ""
+#s3_secret_key = ""
+#s3_bucket_name = ""
 
 # API key for Modal
 #modal_api_token_id = ""

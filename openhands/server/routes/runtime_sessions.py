@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from containers.runtime.code.openhands.utils.async_utils import call_async_from_sync
 from openhands.core.logger import openhands_logger as logger
 from openhands.events.event_filter import EventFilter
 from openhands.events.serialization.event import event_to_dict
@@ -55,6 +56,23 @@ def get_runtime_session(session_id: str, user_id: str) -> RuntimeSession:
             detail='Access denied to this runtime session',
         )
 
+    # Ensure the session is connected
+    if getattr(runtime_session.runtime, 'check_if_alive'):
+        try:
+            getattr(runtime_session.runtime, 'check_if_alive')()
+        except Exception as e:
+            logger.warning(
+                f'Runtime session {session_id} is not alive, attempting to reconnect: {e}'
+            )
+            call_async_from_sync(runtime_session.connect_runtime)
+            logger.info(
+                f'Reconnecting runtime session {session_id} due to: {e}'
+            )
+        # raise HTTPException(
+        #     status_code=status.HTTP_410_GONE,
+        #     detail='Runtime session is no longer active',
+        # )
+
     return runtime_session
 
 
@@ -68,7 +86,7 @@ async def create_runtime_session(
 
     session_id = request.session_id or str(uuid.uuid4())
 
-    if session_id in _runtime_sessions:
+    if session_id in _runtime_sessions and _runtime_sessions[session_id].is_alive:
         return RuntimeSessionResponse(
             status='error', session_id=session_id, message='Session already exists'
         )

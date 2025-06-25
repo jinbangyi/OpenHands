@@ -22,7 +22,7 @@ from openhands.runtime.builder import DockerRuntimeBuilder
 from openhands.runtime.impl.action_execution.action_execution_client import (
     ActionExecutionClient,
 )
-from openhands.runtime.impl.docker.containers import stop_all_containers
+from openhands.runtime.impl.docker.containers import _is_retryablewait_until_alive_error, stop_all_containers
 from openhands.runtime.plugins import PluginRequirement
 from openhands.runtime.runtime_status import RuntimeStatus
 from openhands.runtime.utils import find_available_tcp_port
@@ -42,24 +42,6 @@ EXECUTION_SERVER_PORT_RANGE = (30000, 39999)
 VSCODE_PORT_RANGE = (40000, 49999)
 APP_PORT_RANGE_1 = (50000, 54999)
 APP_PORT_RANGE_2 = (55000, 59999)
-
-
-def _is_retryablewait_until_alive_error(exception: Exception) -> bool:
-    if isinstance(exception, tenacity.RetryError):
-        cause = exception.last_attempt.exception()
-        return _is_retryablewait_until_alive_error(cause)
-
-    return isinstance(
-        exception,
-        (
-            ConnectionError,
-            httpx.ConnectTimeout,
-            httpx.NetworkError,
-            httpx.RemoteProtocolError,
-            httpx.HTTPStatusError,
-            httpx.ReadTimeout,
-        ),
-    )
 
 
 class DockerRuntime(ActionExecutionClient):

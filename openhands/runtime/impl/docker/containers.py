@@ -1,4 +1,29 @@
 import docker
+import httpx
+import tenacity
+
+from openhands.runtime.utils.request import RequestHTTPError
+
+
+def _is_retryablewait_until_alive_error(exception: Exception | BaseException) -> bool:
+    if isinstance(exception, tenacity.RetryError):
+        cause = exception.last_attempt.exception()
+        if cause is None:
+            return False
+        return _is_retryablewait_until_alive_error(cause)
+
+    return isinstance(
+        exception,
+        (
+            ConnectionError,
+            httpx.ConnectTimeout,
+            httpx.NetworkError,
+            httpx.RemoteProtocolError,
+            httpx.HTTPStatusError,
+            httpx.ReadTimeout,
+            RequestHTTPError,
+        ),
+    )
 
 
 def stop_all_containers(prefix: str) -> None:
