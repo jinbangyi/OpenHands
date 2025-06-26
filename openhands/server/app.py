@@ -1,9 +1,13 @@
 import contextlib
 import warnings
 from contextlib import asynccontextmanager
+from os import environ
 from typing import AsyncIterator
 
+from fastapi import applications
+from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.routing import Mount
+from fastapi.staticfiles import StaticFiles
 
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')
@@ -59,6 +63,19 @@ app = FastAPI(
     routes=[Mount(path='/mcp', app=mcp_app)],
 )
 
+# change to False to disable local static files
+if environ.get('OPENHANDS_ENABLE_STATIC_FILES', 'false').lower() in ('true', '1'):
+    app.mount('/static', StaticFiles(directory='./static'), name='static')
+
+    def swagger_monkey_patch(*args, **kwargs):
+        return get_swagger_ui_html(
+            *args,
+            **kwargs,
+            swagger_js_url='/static/swagger-ui/swagger-ui-bundle.js',
+            swagger_css_url='/static/swagger-ui/swagger-ui.css',
+        )
+
+    applications.get_swagger_ui_html = swagger_monkey_patch  # type: ignore
 
 app.include_router(public_api_router)
 app.include_router(files_api_router)
