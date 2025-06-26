@@ -34,6 +34,7 @@ class EventFilter:
     source: str | None = None
     start_date: str | None = None
     end_date: str | None = None
+    cause: int | None = None
 
     def include(self, event: Event) -> bool:
         """Determine if an event should be included based on the filter criteria.
@@ -48,6 +49,9 @@ class EventFilter:
             bool: True if the event passes all filter criteria and should be included,
                   False otherwise.
         """
+        if self.cause is not None and event.cause != self.cause:
+            return False
+
         if self.include_types and not isinstance(event, self.include_types):
             return False
 
